@@ -10,7 +10,5 @@
 #$ -j y
 
 module load python3/3.10.12
-python /projectnb/rcs-intern/Jiazheng/accounting/shiny/getdata.py 2013
-python /projectnb/rcs-intern/Jiazheng/accounting/shiny/filterData.py 2013
-python /projectnb/rcs-intern/Jiazheng/accounting/shiny/GetQueueTime.py 2013
-
+python /projectnb/rcs-intern/Jiazheng/accounting/qwt/shiny/GetQueueTime.py 2024
+python /projectnb/rcs-intern/Jiazheng/accounting/qwt/shiny/process_waiting_times.py

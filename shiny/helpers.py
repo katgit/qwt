@@ -2,53 +2,41 @@ import pandas as pd
 import numpy as np
 import datetime
 
-def determine_job_type(row):
-    qname = row['qname']
-    if qname is not None and qname in ['academic', 'academic-gpu', 'academic-gpu-pub', 'academic-pub', 'aclabgroup', 'aclabgroup-pub',
-        'afgen', 'afgen-pub', 'anderssongroup', 'anderssongroup-pub', 'anl', 'anl-long', 'anl-pub',
-        'apolkovnikov', 'apolkovnikov-pub', 'b', 'b-long', 'batcomputer', 'batcomputer-pub', 'bil-koo',
-        'bil-koo-gpu', 'bil-koo-gpu-pub', 'bil-koo-pub', 'bioinfo', 'bioinfo-pub', 'biophys-gpu', 
-        'biophys-gpu-pub', 'boas', 'boas-pub', 'bpnlab', 'bpnlab-pub', 'bravaya', 'bravaya-pub', 
-        'bstats', 'bstats-pub', 'c', 'casaq', 'casaq-gpu', 'casaq-gpu-pub', 'casaq-mpi', 'casaq-pub', 
-        'cbm.q', 'cbm.q-pub', 'cbms', 'cbms-pub', 'ccs', 'ccs-pub', 'cds', 'cds-gpu', 'cds-gpu-pub', 
-        'cds-m1024', 'cds-m1024-pub', 'cds-pub', 'chapmangroup', 'chapmangroup-gpu', 'chapmangroup-gpu-pub', 
-        'chapmangroup-pub', 'chem-pub', 'chem1', 'chem2', 'chem3', 'chem4', 'crem', 'crem-pub', 'csdata', 
-        'csdata-pub', 'csgpu', 'csgpu-pub', 'cui', 'cui-pub', 'cuigpu', 'cuigpu-pub', 'cupples', 
-        'cupples-pub', 'cyberteam', 'cyberteam-pub', 'czcb-buyin', 'czcb-buyin-pub', 'darpa', 'darpa-pub', 
-        'devorlab', 'devorlab-pub', 'dm', 'dm-pub', 'download', 'e8', 'ece', 'ece-pub', 'ecoggroup', 
-        'ecoggroup-pub', 'econ', 'econ-pub', 'engineering', 'engineering-pub', 'f', 'fhs', 'fhs-pub', 
-        'geo', 'geo-int', 'geo-mpi2', 'hasselmo', 'hasselmo-pub', 'huggins', 'huggins-pub', 'ilya', 'ilya-pub', 
-        'iris', 'iris-gpu', 'iris-gpu-pub', 'iris-long', 'iris-pub', 'iris-wef', 'iris28', 'iris32', 
-        'ivcbuyin', 'ivcbuyin-int', 'ivcbuyin-long', 'ivcbuyin-pub', 'jchengroup', 'jchengroup-pub', 
-        'jjgroup', 'jjgroup-pub', 'johnsonlab.q', 'johnsonlab.q-pub', 'joshigroup', 'joshigroup-gpu', 
-        'joshigroup-gpu-pub', 'joshigroup-pub', 'k40', 'katia', 'knl', 'kolaczyk', 'kolaczyk-pub', 
-        'korolevgroup', 'korolevgroup-gpu', 'korolevgroup-gpu-pub', 'korolevgroup-pub', 'kulisgpu', 
-        'kulisgpu-pub', 'l40s', 'labcigroup', 'labcigroup-gpu', 'labcigroup-gpu-pub', 'labcigroup-pub', 
-        'lagakosgroup', 'lagakosgroup-pub', 'laumann', 'laumann-pub', 'lbi', 'lbi-pub', 'lejeunelab', 
-        'lejeunelab-pub', 'li-rbsp', 'li-rbsp-gpu', 'li-rbsp-gpu-pub', 'li-rbsp-pub', 'linga', 
-        'marschergroup', 'marschergroup-pub', 'mcdaniel-pub', 'mem1024', 'mem384', 'mem512', 'mnemosyne',
-        'mnemosyne-pub', 'montilab', 'montilab-pub', 'muirheadgroup', 'muirheadgroup-pub', 'neuro', 
-        'neuro-autonomy', 'neuro-autonomy-pub', 'neuro-pub', 'neuromorphics-16', 'neuromorphics-pub', 
-        'onrcc-gpu', 'onrcc-gpu-pub', 'onrcc-m1024', 'onrcc-m1024-pub', 'onrcc-m256', 'onrcc-m512', 
-        'onrcc-m512-pub', 'onrcc-pub', 'onrcc-vgl', 'opa', 'p', 'p-int', 'p-long', 'p100', 'p16', 
-        'p8', 'park', 'park-pub', 'peloso', 'peloso-pub', 'pulmonarygroup', 'pulmonarygroup-pub', 
-        'qonos', 'qonos-pub', 'qphys', 'qphys-pub', 'rd-compute', 'rd-compute-pub', 'rnaseq', 
-        'rnaseq-pub', 'ryanlab-pub', 'ryanlab1', 'ryanlab2', 'ryanlab3', 'saimath', 'saimath-pub', 
-        'sandvik', 'sandvik-pub', 'sebas', 'sebas-pub', 'sgrace', 'sgrace-pub', 'siggers', 'siggers-pub', 
-        'sorenson', 'sorenson-pub', 'spl', 'spl-pub', 'straub', 'straub-mpi', 'straub-pub', 'tcn', 
-        'tcn-pub', 'thinfilament', 'thinfilament-gpu', 'thinfilament-gpu-pub', 'thinfilament-pub', 
-        'tsourakakisgroup', 'tsourakakisgroup-pub', 'u', 'v100', 'virtualgl', 'w', 'w-long', 'w28', 
-        'wise', 'wise-pub', 'withers01', 'withers01-pub', 'wys-text', 'wys-text-pub', 'linga', 'geo', 'neuromorphics']:
-        return 'removed'
-    elif row['options'] and 'gpus=' in row['options']:
-        return 'GPU'
-    elif qname is not None and qname in ['u', 'z', '4', 'a', 'as', 'budge', 'a128']:
-        return 'MPI'
-    elif row['slots'] == 1:
-        return '1-p'
-    else:
-        return 'omp'
+def determine_job_type(df): 
+    def get_job_type(row):
+        if row['options'] and 'gpus=' in row['options']:
+            return 'GPU'
+        elif row['slots'] == 1:
+            return '1-p'
+        elif row['granted_pe'] is not None and any(keyword in row['granted_pe'] for keyword in ['tasks_per_node', 'mpi128']):
+            return 'MPI'
+        else:
+            return 'OMP'
+
+    df['job_type'] = df.apply(get_job_type, axis=1)
+    return df
+
     
+def check_shared_buyin(df):
+    # Load the queue information from the CSV file
+    queue_info_path = '/projectnb/scv/utilization/katia/queue_info.csv'
+    queue_info = pd.read_csv(queue_info_path)
+
+    # Create a dictionary mapping 'queuename' to 'class_user'
+    queue_dict = dict(zip(queue_info['queuename'], queue_info['class_user']))
+
+    # Function to determine the queue type
+    def determine_queue_type(row):
+        qname = row['qname']
+        # Check if 'qname' exists in the queue dictionary and determine its type
+        if qname in queue_dict:
+            return 'buyin' if queue_dict[qname] == 'buyin' else 'shared'
+        return 'unknown'  # Default to 'unknown' if qname is not found in the dictionary
+
+    # Apply the function to the DataFrame and create a new column
+    df['queue_type'] = df.apply(determine_queue_type, axis=1)
+
+    return df
 
 # filter GPU jobs by months:
 def GPU_queue_time_by_month(df):    # input is GPU job in one year

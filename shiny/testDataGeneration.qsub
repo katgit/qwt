@@ -1,0 +1,36 @@
+#!/bin/bash -l
+
+# Specify project
+#$ -P rcs-intern
+
+# Give job a name
+#$ -N testJob
+
+# Merge error and output files
+#$ -j y
+
+module load python3/3.10.12
+
+python /projectnb/rcs-intern/Jiazheng/accounting/qwt/shiny/GetQueueTime.py 2013
+
+python /projectnb/rcs-intern/Jiazheng/accounting/qwt/shiny/GetQueueTime.py 2014
+
+python /projectnb/rcs-intern/Jiazheng/accounting/qwt/shiny/GetQueueTime.py 2015
+
+python /projectnb/rcs-intern/Jiazheng/accounting/qwt/shiny/GetQueueTime.py 2016
+
+python /projectnb/rcs-intern/Jiazheng/accounting/qwt/shiny/GetQueueTime.py 2017
+
+python /projectnb/rcs-intern/Jiazheng/accounting/qwt/shiny/GetQueueTime.py 2018
+
+python /projectnb/rcs-intern/Jiazheng/accounting/qwt/shiny/GetQueueTime.py 2019
+
+python /projectnb/rcs-intern/Jiazheng/accounting/qwt/shiny/GetQueueTime.py 2020
+
+python /projectnb/rcs-intern/Jiazheng/accounting/qwt/shiny/GetQueueTime.py 2021
+
+python /projectnb/rcs-intern/Jiazheng/accounting/qwt/shiny/GetQueueTime.py 2022
+
+python /projectnb/rcs-intern/Jiazheng/accounting/qwt/shiny/GetQueueTime.py 2023
+
+python /projectnb/rcs-intern/Jiazheng/accounting/qwt/shiny/GetQueueTime.py 2024
