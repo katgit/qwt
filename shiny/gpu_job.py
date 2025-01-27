@@ -278,7 +278,7 @@ def gpu_job_server(input, output, session):
     @render_plotly
     def job_waiting_time_by_month():
         """
-        Box plot of waiting time (hours) by month, colored by year, 
+        Box plot of waiting time (hours) by month, colored by year,
         and faceted by job_type if multiple job types exist.
         """
         df = gpu_data()
@@ -286,39 +286,58 @@ def gpu_job_server(input, output, session):
             return go.Figure()
 
         df_plot = df.copy()
+
+        # Handle missing data upfront
+        df_plot.dropna(subset=["first_job_waiting_time", "month", "year", "job_type"], inplace=True)
+
+        # Convert waiting time to hours
         df_plot["job_waiting_time (hours)"] = df_plot["first_job_waiting_time"] / 3600.0
 
+        # Downsample for large datasets
+        max_points = 10000
+        if len(df_plot) > max_points:
+            df_plot = df_plot.sample(n=max_points, random_state=42)
+
+        # Determine if faceting is necessary
+        unique_job_types = df_plot["job_type"].nunique()
+        facet_col = "job_type" if unique_job_types > 1 else None
+
+        # Create the box plot
         fig = px.box(
             df_plot,
             x="month",
             y="job_waiting_time (hours)",
             color="year",
-            facet_col="job_type",
-            labels={"job_waiting_time (hours)": "Job Waiting Time (hours)"}
+            facet_col=facet_col,
+            labels={
+                "job_waiting_time (hours)": "Job Waiting Time (hours)",
+                "month": "Month",
+            },
+            category_orders={"month": month_order}  # Ensure correct month order
         )
+
+        # Layout adjustments
         fig.update_layout(
             boxmode="group",
             yaxis=dict(range=[0, 20]),
             showlegend=True
         )
-        # Remove 'job_type=' prefix
-        for annotation in fig["layout"]["annotations"]:
-            if annotation["text"].startswith("job_type="):
-                annotation["text"] = annotation["text"][9:]
-        # Remove x-axis titles
-        for axis in fig.layout:
-            if axis.startswith("xaxis"):
-                fig.layout[axis].title.text = None
-        # Jittered points
+
+        # Remove 'job_type=' prefix if faceted
+        if facet_col:
+            fig.for_each_annotation(lambda a: a.update(text=a.text.replace("job_type=", "")))
+
+        # Add jittered points for visibility
         fig.update_traces(
             marker=dict(size=6, opacity=0.7, line=dict(width=1, color="white")),
             boxpoints="all",
             jitter=0.3,
             pointpos=0
         )
-        # Enforce correct month order
-        fig.update_xaxes(categoryorder="array", categoryarray=month_order)
+
+        # Return the figure
         return fig
+
 
     # ------------------ 6) "Select All" / "Unselect All" ------------------
     @reactive.effect

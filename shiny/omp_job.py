@@ -20,11 +20,15 @@ dataset.dropna(inplace=True)
 dataset['year'] = dataset['year'].astype(int)
 
 # Set the month column to a categorical with a fixed order
-month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-dataset['month'] = pd.Categorical(dataset['month'], 
-                                  categories=month_order, 
-                                  ordered=True)
+month_order = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+]
+dataset["month"] = pd.Categorical(
+    dataset["month"], 
+    categories=month_order, 
+    ordered=True
+)
 
 # Identify the CPU cores (slots) used by OMP jobs
 cpus = sorted(dataset[dataset.job_type == 'omp'].slots.unique().tolist())
@@ -127,8 +131,14 @@ def omp_job_ui():
         ),
 
         # Buttons to quickly select/unselect all
-        ui.input_action_button("select_all_cpus", "Select All", class_="btn btn-primary"),
-        ui.input_action_button("unselect_all_cpus", "Unselect All", class_="btn btn-secondary"),
+        ui.row(
+            ui.div(
+                ui.input_action_button("select_all_cpus", "Select All", class_="btn btn-primary me-2"),
+                ui.input_action_button("unselect_all_cpus", "Unselect All", class_="btn btn-secondary"),
+                class_="d-flex"
+            ),
+            class_="mb-3"  # Add margin below the row
+        ),
 
         # -------------------- Value Boxes --------------------
         ui.layout_columns(
@@ -174,7 +184,8 @@ def omp_job_ui():
                     class_="d-flex justify-content-between align-items-center",
                 ),
                 output_widget("barplot"),  # Bar plot of median waiting time by CPU group
-                full_screen=True
+                full_screen=True,
+                class_="mb-4" # add margin below 
             ),
             ui.card(
                 ui.card_header(
@@ -182,7 +193,8 @@ def omp_job_ui():
                     class_="d-flex justify-content-between align-items-center"
                 ),
                 output_widget("job_waiting_time_by_month"),  # Box plot by month/year/cpu_group
-                full_screen=True
+                full_screen=True,
+                class_="mb-4" # add margin below 
             ),
             col_widths=[6, 6, 6]
         ),
@@ -410,7 +422,7 @@ def omp_job_server(input, output, session):
         data['job_waiting_time (hours)'] = data['first_job_waiting_time'] / 3600
         data['cpu_group'] = data['slots'].apply(label_cpu_group)
 
-        # Ensure consistent month order
+        # Ensure consistent month order (this is the critical step)
         data['month'] = pd.Categorical(data['month'], categories=month_order, ordered=True)
 
         # Create box plot with facets by CPU group
@@ -433,7 +445,11 @@ def omp_job_server(input, output, session):
             if "text" in annotation and annotation["text"].startswith("CPU Group="):
                 annotation["text"] = annotation["text"].replace("CPU Group=", "")
 
+        # Ensure x-axis (month) follows the correct order
+        fig.update_xaxes(categoryorder="array", categoryarray=month_order)
+
         return fig
+
 
 
     # -------------------- Reactive Effects & Event Handling --------------------
@@ -486,6 +502,7 @@ def omp_job_server(input, output, session):
         ui.update_checkbox_group("cpus", selected=selected_labels)
         # Optionally, select all months
         ui.update_checkbox_group("months", selected=month_order)
+        class_="mb-3"
 
     @reactive.effect
     @reactive.event(input.unselect_all_cpus)

@@ -297,32 +297,49 @@ def mpi_job_server(input, output, session):
     # ---- (B) Box Plot: Job Waiting Time by Month & Year ----
     @render_plotly
     def job_waiting_time_by_month():
+        """
+        Create a box plot (facet by job type) showing job waiting time (hours)
+        by month, with outliers preserved during downsampling.
+        """
         df = dataset_data()
         if df.empty:
+            print("No data available for Job Waiting Time by Month")
             return go.Figure()
 
         df_plot = df.copy()
-        df_plot["job_type"] = df_plot["job_type"].str.replace("MPI job ", "", regex=False)
+
+        # Convert sec -> hours
         df_plot["job_waiting_time (hours)"] = df_plot["first_job_waiting_time"] / 3600.0
 
         # Filter by selected years
         selected_years = list(map(int, input.years()))
         df_plot = df_plot[df_plot['year'].isin(selected_years)]
 
-        # Limit the number of points per year
-        max_points = 10000  # Set the maximum number of data points
+        # Downsampling logic with outlier preservation
+        max_points = 5000  # Set the maximum number of data points
         points_per_year = max_points // len(selected_years) if selected_years else max_points
 
-        # Downsample each year
-        downsampled_data = []
+        # Identify outliers using IQR
+        Q1 = df_plot["job_waiting_time (hours)"].quantile(0.25)
+        Q3 = df_plot["job_waiting_time (hours)"].quantile(0.75)
+        IQR = Q3 - Q1
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+
+        outliers = df_plot[(df_plot["job_waiting_time (hours)"] < lower_bound) | 
+                        (df_plot["job_waiting_time (hours)"] > upper_bound)]
+        non_outliers = df_plot[(df_plot["job_waiting_time (hours)"] >= lower_bound) & 
+                            (df_plot["job_waiting_time (hours)"] <= upper_bound)]
+
+        downsampled_non_outliers = []
         for year in selected_years:
-            year_data = df_plot[df_plot['year'] == year]
+            year_data = non_outliers[non_outliers['year'] == year]
             if len(year_data) > points_per_year:
                 year_data = year_data.sample(n=points_per_year, random_state=42)
-            downsampled_data.append(year_data)
+            downsampled_non_outliers.append(year_data)
 
-        # Combine downsampled data
-        df_plot = pd.concat(downsampled_data) if downsampled_data else df_plot
+        # Combine outliers and sampled non-outliers
+        df_plot = pd.concat([pd.concat(downsampled_non_outliers), outliers])
 
         # Create the box plot
         fig = px.box(
@@ -343,7 +360,7 @@ def mpi_job_server(input, output, session):
         # Remove "job_type=" prefix in facet titles
         for annotation in fig["layout"]["annotations"]:
             if annotation["text"].startswith("job_type="):
-                annotation["text"] = annotation["text"][9:]
+                annotation["text"] = annotation["text"][16:]
         # Remove x-axis label for subplots
         for axis in fig.layout:
             if axis.startswith("xaxis"):
@@ -360,46 +377,91 @@ def mpi_job_server(input, output, session):
         return fig
 
 
+
+
     # ---- (C) Box Plot: Job Waiting Time by CPU Cores ----
     @render_plotly
     def job_waiting_time_by_cpu():
+        """
+        Create a box plot of job waiting time (hours) grouped into 10 CPU core ranges,
+        with outliers preserved during downsampling.
+        """
         df = dataset_data()
         if df.empty:
             return go.Figure()
 
         df_plot = df.copy()
-        # Convert sec -> hours
+
+        # Convert waiting time to hours
         df_plot["job_waiting_time (hours)"] = df_plot["first_job_waiting_time"] / 3600.0
-        # Convert slots to str for categorical plotting
-        df_plot["slots"] = df_plot["slots"].astype(int).astype(str)
+
+        # Ensure 'slots' column is an integer
+        df_plot["slots"] = df_plot["slots"].astype(int)
+
+        # Calculate dynamic ranges for 10 groups
+        min_core = df_plot["slots"].min()
+        max_core = df_plot["slots"].max()
+        group_size = (max_core - min_core) // 10
+
+        def group_cpu_cores(slots):
+            for i in range(10):
+                lower = min_core + i * group_size
+                upper = lower + group_size
+                if i == 9:  # Last group includes the maximum
+                    upper = max_core + 1
+                if lower <= slots < upper:
+                    return f"{lower}-{upper - 1}"
+            return "other"
+
+        df_plot["cpu_group"] = df_plot["slots"].apply(group_cpu_cores)
 
         # Filter by selected years
         selected_years = list(map(int, input.years()))
         df_plot = df_plot[df_plot['year'].isin(selected_years)]
 
-        # Limit the number of points per year
-        max_points = 10000  # Set the maximum number of data points
+        # Downsampling logic with outlier preservation
+        max_points = 4000  # Set the maximum number of data points
         points_per_year = max_points // len(selected_years) if selected_years else max_points
 
-        # Downsample each year
-        downsampled_data = []
+        # Identify outliers using IQR
+        Q1 = df_plot["job_waiting_time (hours)"].quantile(0.25)
+        Q3 = df_plot["job_waiting_time (hours)"].quantile(0.75)
+        IQR = Q3 - Q1
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+
+        outliers = df_plot[(df_plot["job_waiting_time (hours)"] < lower_bound) | 
+                        (df_plot["job_waiting_time (hours)"] > upper_bound)]
+        non_outliers = df_plot[(df_plot["job_waiting_time (hours)"] >= lower_bound) & 
+                            (df_plot["job_waiting_time (hours)"] <= upper_bound)]
+
+        downsampled_non_outliers = []
         for year in selected_years:
-            year_data = df_plot[df_plot['year'] == year]
+            year_data = non_outliers[non_outliers['year'] == year]
             if len(year_data) > points_per_year:
                 year_data = year_data.sample(n=points_per_year, random_state=42)
-            downsampled_data.append(year_data)
+            downsampled_non_outliers.append(year_data)
 
-        # Combine downsampled data
-        df_plot = pd.concat(downsampled_data) if downsampled_data else df_plot
+        df_plot = pd.concat([pd.concat(downsampled_non_outliers), outliers])
+
+        # Ensure consistent ordering for CPU groups
+        def safe_sort_key(group):
+            try:
+                return int(group.split("-")[0])
+            except ValueError:
+                return float("inf")
+
+        unique_groups = sorted(df_plot["cpu_group"].unique(), key=safe_sort_key)
+        df_plot["cpu_group"] = pd.Categorical(df_plot["cpu_group"], categories=unique_groups, ordered=True)
 
         # Create the box plot
         fig = px.box(
             df_plot,
-            x="slots",
+            x="cpu_group",
             y="job_waiting_time (hours)",
             color="year",
             labels={
-                "slots": "CPU Cores",
+                "cpu_group": "CPU Group",
                 "job_waiting_time (hours)": "Job Waiting Time (hours)"
             }
         )
@@ -417,6 +479,9 @@ def mpi_job_server(input, output, session):
             pointpos=0
         )
         return fig
+
+
+
 
 
     # ----------------------------------------------------------------

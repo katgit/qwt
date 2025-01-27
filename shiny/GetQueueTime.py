@@ -53,20 +53,22 @@ def waiting_time_per_job_type(input_file_name, output_file_name, year):
                         if 'gpus=1' in row['options']:
                             if submission_time > gpu_1_latest_end_times[month]:
                                 current_waiting_time = start_time - submission_time
-                                job_type_waiting_times.append(
-                                    ['GPU = 1', row['queue_type'], current_waiting_time, month, year, row['job_number'], row['slots']]
-                                )
-                                count += 1
+                                if current_waiting_time >= 0:
+                                    job_type_waiting_times.append(
+                                        ['GPU = 1', row['queue_type'], current_waiting_time, month, year, row['job_number'], row['slots']]
+                                    )
+                                    count += 1
                             if end_time > gpu_1_latest_end_times[month]:
                                 gpu_1_latest_end_times[month] = end_time
 
                         else:
                             if submission_time > latest_end_times[month]:
                                 current_waiting_time = start_time - submission_time
-                                job_type_waiting_times.append(
-                                    ['GPU > 1', row['queue_type'], current_waiting_time, month, year, row['job_number'], row['slots']]
-                                )
-                                count += 1
+                                if current_waiting_time >= 0:
+                                    job_type_waiting_times.append(
+                                        ['GPU > 1', row['queue_type'], current_waiting_time, month, year, row['job_number'], row['slots']]
+                                    )
+                                    count += 1
                             if end_time > latest_end_times[month]:
                                 latest_end_times[month] = end_time
                 # print(f"Rows number GPU for owner {owner}:", count)
@@ -92,10 +94,11 @@ def waiting_time_per_job_type(input_file_name, output_file_name, year):
                             qname = 'a'
                         if submission_time > latest_end_times[qname]:
                             current_waiting_time = start_time - submission_time
-                            job_type_waiting_times.append(
-                                [f'MPI job {qname}', row['queue_type'], current_waiting_time, month, year, row['job_number'], row['slots']]
-                            )
-                            count += 1
+                            if current_waiting_time >= 0:
+                                job_type_waiting_times.append(
+                                    [f'MPI job {qname}', row['queue_type'], current_waiting_time, month, year, row['job_number'], row['slots']]
+                                )
+                                count += 1
 
                         latest_end_times[qname] = max(end_time, latest_end_times[qname])
                 # print(f"Rows number MPI for owner {owner}:", count)
@@ -119,10 +122,11 @@ def waiting_time_per_job_type(input_file_name, output_file_name, year):
                         qname = row['qname']
                         if submission_time > latest_end_times[qname]:
                             current_waiting_time = start_time - submission_time
-                            job_type_waiting_times.append(
-                                [f'{job_type} {qname}', row['queue_type'], current_waiting_time, month, year, row['job_number'], row['slots']]
-                            )
-                            count += 1
+                            if current_waiting_time >= 0:
+                                job_type_waiting_times.append(
+                                    [f'{job_type} {qname}', row['queue_type'], current_waiting_time, month, year, row['job_number'], row['slots']]
+                                )
+                                count += 1
 
                         latest_end_times[qname] = max(end_time, latest_end_times[qname])
                 # print(f"Rows number {job_type} for owner {owner}:", count)
