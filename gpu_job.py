@@ -4,7 +4,8 @@ from shiny import ui, render, reactive
 from shinywidgets import output_widget, render_plotly
 import plotly.express as px
 import plotly.graph_objects as go  # For empty Figure
-
+import datetime
+now = datetime.datetime.now()
 # --------------------------------------------------------------------
 # DATA LOADING & PREP
 # --------------------------------------------------------------------
@@ -44,27 +45,47 @@ ICONS = {
 }
 
 # --------------------------------------------------------------------
-# UI DEFINITION
+# UI
 # --------------------------------------------------------------------
 
 def gpu_job_ui():
-    """
-    UI for the GPU Job page: 
-    - Year selection
-    - Summary stats
-    - Data table
-    - Various plots
-    """
     return ui.page_fluid(
         # ------------------ Year Selection ------------------
-        ui.input_checkbox_group(
-            "years",
-            "Select Year(s)",
-            list(range(2013, 2026)),  # 2013–2025
-            selected=[2024],
-            inline=True
+        ui.output_ui("gpu_warning_message"),
+        ui.div(
+            ui.div(
+                ui.input_text(
+                    "selected_year_gpu",
+                    "Enter Year",
+                    value=str(now.year),
+                    placeholder="e.g., 2024"
+                ),
+                style="margin-right: 20px; width: 250px;"
+            ),
+            ui.div(
+                ui.input_text(
+                    "selected_month_gpu",
+                    "Enter Month (e.g., Jan, Feb)",
+                    value=now.strftime("%b"),
+                    placeholder="e.g., Jan"
+                ),
+                style="margin-right: 20px; width: 250px;"
+            ),
+            ui.div(
+                ui.input_select(
+                    "queue_filter_gpu",
+                    "Queue Type",
+                    choices={
+                        "all": "All",
+                        "shared": "Shared Nodes Only",
+                        "buyin": "Buyin Nodes Only"
+                    },
+                    selected="all"
+                ),
+                style="width: 250px;"
+            ),
+            style="display: flex; align-items: flex-end; margin-bottom: 1em; margin-top: 1em;"
         ),
-
         # ------------------ Value Boxes ---------------------
         ui.layout_columns(
             ui.value_box(
@@ -87,11 +108,6 @@ def gpu_job_ui():
 
         # ------------------ Main Content ---------------------
         ui.layout_columns(
-            # ui.card(
-            #     ui.card_header("Dataset Data"),
-            #     ui.output_data_frame("displayTable"),
-            #     full_screen=True
-            # ),
             ui.card(
                 ui.card_header(
                     "Waiting Time vs Job Type",
@@ -108,7 +124,7 @@ def gpu_job_ui():
                     ),
                     class_="d-flex justify-content-between align-items-center",
                 ),
-                output_widget("barplot"),
+                output_widget("GPU_barplot"),
                 full_screen=True
             ),
             ui.card(
@@ -117,6 +133,14 @@ def gpu_job_ui():
                     class_="d-flex justify-content-between align-items-center"
                 ),
                 output_widget("job_waiting_time_by_month"),
+                full_screen=True
+            ),
+            ui.card(
+                ui.card_header(
+                    "Waiting Time of Each Queue",
+                    class_="d-flex justify-content-between align-items-center"
+                ),
+                output_widget("barplotEachQueue"),
                 full_screen=True
             ),
             col_widths=[6, 6, 6]
@@ -136,22 +160,29 @@ def gpu_job_server(input, output, session):
       3) Render data table and various plots (barplot, boxplot).
     """
 
-    # ------------------ 1) Reactive Filter ------------------
+    # ------------------ Reactive Filter ------------------
     @reactive.Calc
     def gpu_data():
-        """
-        Filter the global 'dataset' based on selected years.
-        (If you need to filter by GPU job_type, you can do it here, e.g.:
-         df = df[df["job_type"].str.contains("GPU")])
-        """
-        selected_years = list(map(int, input.years()))
-        if not selected_years:
-            return dataset.iloc[0:0]  # Return empty if no years selected
+        try:
+            year = int(input.selected_year_gpu())
+        except ValueError:
+            return dataset.iloc[0:0]
 
-        df_filtered = dataset[dataset["year"].isin(selected_years)]
-        return df_filtered
+        month = input.selected_month_gpu().capitalize()
+        if month not in month_order:
+            return dataset.iloc[0:0]
 
-    # ------------------ 2) Summary Stats ------------------
+        df = dataset[(dataset["year"] == year) & (dataset["month"] == month)]
+
+        queue_filter = input.queue_filter_gpu()
+        if queue_filter == "shared":
+            df = df[df["queue_type"] == "shared"]
+        elif queue_filter == "buyin":
+            df = df[df["queue_type"] == "buyin"]
+
+        return df
+
+    # ------------------ Summary Stats ------------------
     @reactive.Calc
     def gpu_waiting_time_stats():
         """
@@ -172,7 +203,7 @@ def gpu_job_server(input, output, session):
             "count": df.shape[0],
         }
 
-    # ------------------ 3) Value Box Renderers ------------------
+    # ------------------ Value Box Renderers ------------------
     @output
     @render.text
     def min_waiting_time():
@@ -211,41 +242,11 @@ def gpu_job_server(input, output, session):
         stats = gpu_waiting_time_stats()
         return str(stats["count"])
 
-    # ------------------ 4) Data Table ------------------
-    # @output
-    # @render.data_frame
-    # def displayTable():
-    #     """
-    #     Show the filtered data in a table, converting waiting time to minutes (string).
-    #     """
-    #     df = gpu_data()
-    #     if df.empty:
-    #         return pd.DataFrame()
 
-    #     df_disp = df.copy()
-    #     # Convert to minutes (string format)
-    #     df_disp["first_job_waiting_time"] = (df_disp["first_job_waiting_time"] / 60).round(1).astype(str)
-    #     # Sort by job_number
-    #     df_disp.sort_values("job_number", ascending=True, inplace=True)
-
-    #     # Rename columns for display
-    #     df_disp.rename(
-    #         columns={
-    #             "job_type": "Job Type",
-    #             "first_job_waiting_time": "Waiting Time (min)",
-    #             "month": "Month",
-    #             "job_number": "Job Number",
-    #             "year": "Year",
-    #             "slots": "CPU Cores",
-    #         },
-    #         inplace=True
-    #     )
-    #     return df_disp
-
-    # ------------------ 5) Plots ------------------
+    # ------------------ Plots ------------------
 
     @render_plotly
-    def barplot():
+    def GPU_barplot():
         """
         Bar plot of median waiting time (minutes) by job_type.
         Optional color variable from radio buttons: job_type or none.
@@ -260,6 +261,8 @@ def gpu_job_server(input, output, session):
 
         # Group by job_type for median
         grouped = df.groupby("job_type")["first_job_waiting_time"].median().reset_index()
+        # Sort by median waiting time in ascending order
+        grouped = grouped.sort_values(by="first_job_waiting_time", ascending=True)
 
         color_var = input.scatter_color()
         fig = px.bar(
@@ -278,8 +281,8 @@ def gpu_job_server(input, output, session):
     @render_plotly
     def job_waiting_time_by_month():
         """
-        Box plot of waiting time (hours) by month, colored by year,
-        and faceted by job_type if multiple job types exist.
+        Box plot of waiting time (hours) by month, colored by year
+        Combines all GPU-related job types into "GPU = 1" or "GPU > 1".
         """
         df = gpu_data()
         if df.empty:
@@ -292,6 +295,11 @@ def gpu_job_server(input, output, session):
 
         # Convert waiting time to hours
         df_plot["job_waiting_time (hours)"] = df_plot["first_job_waiting_time"] / 3600.0
+
+        # Combine GPU-related job types into "GPU = 1" or "GPU > 1"
+        df_plot["job_type"] = df_plot["job_type"].apply(
+            lambda x: "GPU = 1" if str(x).startswith("GPU = 1") else ("GPU > 1" if str(x).startswith("GPU") else x)
+        )
 
         # Downsample for large datasets
         max_points = 10000
@@ -338,21 +346,68 @@ def gpu_job_server(input, output, session):
         # Return the figure
         return fig
 
+    # job waiting time for each individual shared queue
+    @render_plotly
+    def barplotEachQueue():
+        """
+        Create a bar plot showing the median waiting time (minutes) for each GPU job type.
+        """
+        df = gpu_data()
+        if df.empty:
+            print("No data available for bar plot in GPU Job")
+            return go.Figure()
 
-    # ------------------ 6) "Select All" / "Unselect All" ------------------
-    @reactive.effect
-    @reactive.event(input.select_all)
-    def _():
-        """
-        Example: If you had a job_type checkbox group for GPU,
-        you could select all GPU job types here.
-        """
-        pass
+        # Remove GPU-related prefixes using slicing
+        df["job_type"] = df["job_type"].str[8:]  # Slice the string to remove the first 8 characters
 
-    @reactive.effect
-    @reactive.event(input.unselect_all)
-    def _():
-        """
-        Example: Clear selections, e.g. job_type or years.
-        """
-        pass
+        # Convert sec -> min and compute median waiting time
+        df["first_job_waiting_time"] = df["first_job_waiting_time"] / 60  # Convert to minutes
+        grouped = (
+            df.groupby("job_type", observed=True)["first_job_waiting_time"]
+            .median()
+            .round(2)
+            .reset_index()
+        )
+
+        # Sort by median waiting time in ascending order
+        grouped = grouped.sort_values(by="first_job_waiting_time", ascending=True)
+
+        # Create bar plot
+        fig = px.bar(
+            grouped,
+            x="job_type",
+            y="first_job_waiting_time",
+            labels={
+                "first_job_waiting_time": "Median Waiting Time (min)",
+                "job_type": "Job Type",
+            },
+            text_auto=".1f",  # Automatically display median values on bars
+        )
+
+        # Improve layout
+        fig.update_layout(
+            xaxis_title="Job Type",
+            yaxis_title="Median Waiting Time (min)",
+            showlegend=False,
+        )
+
+        return fig
+
+    @output
+    @render.ui
+    def gpu_warning_message():
+        try:
+            year = int(input.selected_year_gpu())
+            month = input.selected_month_gpu().capitalize()
+        except:
+            return ui.markdown("⚠️ Invalid year/month input.")
+
+        if month not in month_order:
+            return ui.markdown("⚠️ Invalid month format. Use 3-letter month (e.g., Jan, Feb).")
+
+        if dataset[(dataset["year"] == year) & (dataset["month"] == month)].empty:
+            return ui.markdown("⚠️ No data available for this year and month.")
+
+        return None
+
+

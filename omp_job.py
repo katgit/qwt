@@ -5,13 +5,12 @@ from shinywidgets import output_widget, render_plotly
 import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.cluster import KMeans
+import datetime
 
-# -------------------------------------------------------------------------
-# DATA LOADING & PREPROCESSING
-# -------------------------------------------------------------------------
 
 # Load data from Feather
 dataset = pd.read_feather("/projectnb/rcs-intern/Jiazheng/accounting/ShinyApp_Data_OMP.feather")
+now = datetime.datetime.now()
 
 # Drop rows with any NaN values (if desired, specify subset= for selective dropping)
 dataset.dropna(inplace=True)
@@ -108,19 +107,54 @@ def omp_job_ui():
     """
     return ui.page_fluid(
         # -------------------- Filters --------------------
-        ui.input_checkbox_group(
-            "years",
-            "Select Year(s)",
-            list(range(2013, 2026)),  # from 2013 to 2024
-            selected=[2024],          # default selected year
-            inline=True
-        ),
-        ui.input_checkbox_group(
-            "months",
-            "Select Month(s)",
-            month_order,
-            selected=['Jan'],
-            inline=True
+        # ui.input_checkbox_group(
+        #     "years",
+        #     "Select Year(s)",
+        #     list(range(2013, 2026)),  # from 2013 to 2024
+        #     selected=[2024],          # default selected year
+        #     inline=True
+        # ),
+        # ui.input_checkbox_group(
+        #     "months",
+        #     "Select Month(s)",
+        #     month_order,
+        #     selected=['Jan'],
+        #     inline=True
+        # ),
+        ui.output_ui("omp_warning_message"),
+        ui.div(
+            ui.div(
+                ui.input_text(
+                    "selected_year_omp",
+                    "Enter Year",
+                    value=str(now.year),
+                    placeholder="e.g., 2024"
+                ),
+                style="margin-right: 20px; width: 250px;"
+            ),
+            ui.div(
+                ui.input_text(
+                    "selected_month_omp",
+                    "Enter Month (e.g., Jan, Feb)",
+                    value=now.strftime("%b"),
+                    placeholder="e.g., Jan"
+                ),
+                style="margin-right: 20px; width: 250px;"
+            ),
+            ui.div(
+                ui.input_select(
+                    "queue_filter_omp",
+                    "Queue Type",
+                    choices={
+                        "all": "All",
+                        "shared": "Shared Nodes Only",
+                        "buyin": "Buyin Nodes Only"
+                    },
+                    selected="all"
+                ),
+                style="width: 250px;"
+            ),
+            style="display: flex; align-items: flex-end; margin-bottom: 1em; margin-top: 1em;"
         ),
         ui.input_checkbox_group(
             "cpus",
@@ -218,60 +252,39 @@ def omp_job_server(input, output, session):
     @reactive.calc
     def dataset_data():
         """
-        Reactive expression to filter the global 'dataset' based on
-        selected years, months, and CPU cores from the UI.
+        Reactive expression to filter the dataset based on:
+        - selected year (text)
+        - selected month (text)
+        - selected queue type
+        - selected CPUs (checkbox group)
         """
-        print("dataset_data function called for OMP Job")
+        try:
+            year = int(input.selected_year_omp())
+        except ValueError:
+            return dataset.iloc[0:0]
 
-        # Get selections from the UI
-        years = input.years()
-        months = input.months()
+        month = input.selected_month_omp().capitalize()
+        if month not in month_order:
+            return dataset.iloc[0:0]
+
+        queue_filter = input.queue_filter_omp()
         cpus_selected = input.cpus()
-
-        # Ensure years are integers
-        years = list(map(int, years))
-
-        # Get expanded list of CPU cores from range labels
         expanded_cpus_selected = get_expanded_cpu_selection(cpus_selected)
 
-        # Build filters
-        idx_years  = dataset['year'].isin(years)           if years  else False
-        idx_months = dataset['month'].isin(months)         if months else False
-        idx_cpus   = dataset['slots'].isin(expanded_cpus_selected) \
-                     if expanded_cpus_selected else False
+        df = dataset[
+            (dataset["year"] == year) &
+            (dataset["month"] == month) &
+            (dataset["slots"].isin(expanded_cpus_selected))
+        ]
 
-        # Filter data
-        filtered_data = dataset[idx_years & idx_months & idx_cpus]
-        return filtered_data
+        if queue_filter == "shared":
+            df = df[df["queue_type"] == "shared"]
+        elif queue_filter == "buyin":
+            df = df[df["queue_type"] == "buyin"]
 
-    # -------------------- Render: Data Table --------------------
-    # @output
-    # @render.data_frame
-    # def displayTable():
-    #     """
-    #     Display a filtered subset of the main dataset.
-    #     Waiting time is shown in minutes (numeric), but as a string for user readability.
-    #     Sorted by job_number for clarity.
-    #     """
-    #     data = dataset_data().copy()
-    #     # Convert waiting time to minutes (string-based representation)
-    #     data['first_job_waiting_time'] = data['first_job_waiting_time'].apply(
-    #         lambda x: f"{x / 60:.1f}"  # e.g. "123.4"
-    #     )
-    #     # Sort by job_number
-    #     data.sort_values(by='job_number', ascending=True, inplace=True)
-    #     # Rename columns for display
-    #     data_renamed = data.rename(
-    #         columns={
-    #             'job_type': 'Job Type',
-    #             'first_job_waiting_time': 'Waiting Time (min)',
-    #             'month': 'Month',
-    #             'job_number': 'Job Number',
-    #             'year': 'Year',
-    #             'slots': 'CPU Cores'
-    #         }
-    #     )
-    #     return data_renamed
+        return df
+
+
 
     # -------------------- Value Boxes: Summary Stats --------------------
 
@@ -349,8 +362,7 @@ def omp_job_server(input, output, session):
     @render_plotly
     def barplot():
         """
-        Create a bar plot showing median waiting time (minutes)
-        by CPU group for the filtered dataset.
+        Create a bar plot showing median waiting time (minutes) by CPU group for the filtered dataset.
         """
         data = dataset_data().copy()
         if data.empty:
@@ -457,11 +469,6 @@ def omp_job_server(input, output, session):
     @reactive.effect
     @reactive.event(input.select_all)
     def _():
-        """
-        Example effect: If there's a 'select_all' checkbox or button
-        for job_type, it updates the job_type selections to only OMP jobs.
-        (Currently not used, but kept for reference.)
-        """
         omp_jobs = [job for job in dataset.job_type.unique() if "OMP" in job]
         ui.update_checkbox_group("job_type", selected=omp_jobs)
 
@@ -469,8 +476,7 @@ def omp_job_server(input, output, session):
     @reactive.event(input.unselect_all)
     def _():
         """
-        Example effect: Unselect all job_type checkboxes if needed.
-        (Currently not used, but kept for reference.)
+        Unselect all job_type checkboxes
         """
         ui.update_checkbox_group("job_type", selected=[])
 
@@ -479,8 +485,7 @@ def omp_job_server(input, output, session):
     def _():
         """
         This effect triggers whenever 'cpus' selection changes.
-        You can insert additional logic if you need to react
-        to CPU selection changes (e.g., additional UI updates).
+        to CPU selection changes
         """
         selected_cpus = input.cpus()
         filtered_jobs = dataset[dataset['slots'].isin(get_expanded_cpu_selection(selected_cpus))]
@@ -512,3 +517,21 @@ def omp_job_server(input, output, session):
         """
         ui.update_checkbox_group("cpus", selected=[])
         ui.update_checkbox_group("months", selected=[])
+
+    # warning message render
+    @output
+    @render.ui
+    def omp_warning_message():
+        try:
+            year = int(input.selected_year_omp())
+            month = input.selected_month_omp().capitalize()
+        except:
+            return ui.markdown("⚠️ Invalid year or month input.")
+
+        if month not in month_order:
+            return ui.markdown("⚠️ Invalid month format. Use 3-letter month (e.g., Jan, Feb).")
+
+        if dataset[(dataset["year"] == year) & (dataset["month"] == month)].empty:
+            return ui.markdown("⚠️ No data available for this year and month.")
+
+        return None

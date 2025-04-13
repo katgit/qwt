@@ -4,11 +4,12 @@ from shiny import ui, render, reactive
 from shinywidgets import output_widget, render_plotly
 import plotly.express as px
 import plotly.graph_objects as go
+import datetime
 
 # ----------------------------------------------------------------
 # DATA LOADING & PREP
 # ----------------------------------------------------------------
-
+now = datetime.datetime.now()
 dataset = pd.read_feather("/projectnb/rcs-intern/Jiazheng/accounting/ShinyApp_Data_MPI.feather")
 
 # Ensure 'year' is integer
@@ -52,12 +53,40 @@ def mpi_job_ui():
     including year checkboxes, summary value boxes, and multiple plots.
     """
     return ui.page_fluid(
-        ui.input_checkbox_group(
-            "years",
-            "Select Year(s)",
-            list(range(2013, 2026)),  # 2013-2025
-            selected=[2024],
-            inline=True
+        ui.output_ui("mpi_warning_message"),
+        ui.div(
+            ui.div(
+                ui.input_text(
+                    "selected_year_mpi",
+                    "Enter Year",
+                    value=str(now.year),
+                    placeholder="e.g., 2024"
+                ),
+                style="margin-right: 20px; width: 250px;"
+            ),
+            ui.div(
+                ui.input_text(
+                    "selected_month_mpi",
+                    "Enter Month (e.g., Jan, Feb)",
+                    value=now.strftime("%b"),
+                    placeholder="e.g., Jan"
+                ),
+                style="margin-right: 20px; width: 250px;"
+            ),
+            ui.div(
+                ui.input_select(
+                    "queue_filter_mpi",
+                    "Queue Type",
+                    choices={
+                        "all": "All",
+                        "shared": "Shared Nodes Only",
+                        "buyin": "Buyin Nodes Only"
+                    },
+                    selected="all"
+                ),
+                style="width: 250px;"
+            ),
+            style="display: flex; align-items: flex-end; margin-bottom: 1em; margin-top: 1em;"
         ),
         ui.layout_columns(
             ui.value_box("Min Waiting Time", ui.output_text("min_waiting_time"), showcase=ICONS["min"]),
@@ -102,7 +131,7 @@ def mpi_job_ui():
             ),
             ui.card(
                 ui.card_header(
-                    "Box Plot of Job Waiting Time by CPU Cores",
+                    "Total Waiting Time by CPU Cores",
                     class_="d-flex justify-content-between align-items-center"
                 ),
                 output_widget("job_waiting_time_by_cpu"),
@@ -125,66 +154,27 @@ def mpi_job_server(input, output, session):
     # ----------------------------------------------------------------
     @reactive.calc
     def dataset_data():
-        """
-        Filter the dataset based on user inputs (years).
-        Returns the subset used throughout the app (table, plots, stats).
-        """
-        print("dataset_data function called for MPI Job")
-        years = list(map(int, input.years()))
-
-        if not years:
-            # If nothing is selected, return an empty DataFrame
+        try:
+            year = int(input.selected_year_mpi())
+        except ValueError:
             return dataset.iloc[0:0]
 
-        # Filter by year
-        df_filtered = dataset[dataset["year"].isin(years)]
-        # If needed, filter by job_type = "MPI" (some dataset might have multiple job types)
-        # df_filtered = df_filtered[df_filtered["job_type"].str.contains("MPI")]
+        month = input.selected_month_mpi().capitalize()
+        if month not in month_order:
+            return dataset.iloc[0:0]
 
-        print(f"Filtered data shape: {df_filtered.shape}")
-        return df_filtered
+        df = dataset[(dataset["year"] == year) & (dataset["month"] == month)]
 
-    # ----------------------------------------------------------------
-    # 2) TABLE OUTPUT
-    # ----------------------------------------------------------------
-    # @output
-    # @render.data_frame
-    # def displayTable():
-    #     """
-    #     Displays filtered dataset in a table.
-    #     - Converts waiting time from seconds -> minutes for readability.
-    #     - Renames columns for user-friendly output.
-    #     - Strips 'MPI job' prefix from job_type if present.
-    #     """
-    #     df = dataset_data()
-    #     if df.empty:
-    #         return pd.DataFrame()
+        queue_filter = input.queue_filter_mpi()
+        if queue_filter == "shared":
+            df = df[df["queue_type"] == "shared"]
+        elif queue_filter == "buyin":
+            df = df[df["queue_type"] == "buyin"]
 
-    #     df_disp = df.copy()
-    #     # Convert sec -> minutes
-    #     df_disp["first_job_waiting_time"] = (df_disp["first_job_waiting_time"] / 60).round(1)
-    #     # Remove 'MPI job ' prefix if present
-    #     df_disp["job_type"] = df_disp["job_type"].str.replace("MPI job ", "", regex=False)
-    #     # Sort by job_number
-    #     df_disp.sort_values(by="job_number", ascending=True, inplace=True)
+        return df
 
-    #     # Rename columns for display
-    #     df_disp.rename(
-    #         columns={
-    #             "job_type": "Queue",
-    #             "first_job_waiting_time": "Waiting Time (min)",
-    #             "month": "Month",
-    #             "job_number": "Job Number",
-    #             "year": "Year",
-    #             "slots": "CPU Cores",
-    #         },
-    #         inplace=True
-    #     )
-    #     return df_disp
 
-    # ----------------------------------------------------------------
-    # 3) SUMMARY STATS (MIN, MAX, MEAN, MEDIAN, COUNT)
-    # ----------------------------------------------------------------
+    # SUMMARY STATS (MIN, MAX, MEAN, MEDIAN, COUNT)
     @reactive.calc
     def stats():
         """
@@ -275,31 +265,46 @@ def mpi_job_server(input, output, session):
         df_plot = df.copy()
         # Remove prefix from job_type
         df_plot["job_type"] = df_plot["job_type"].str.replace("MPI job ", "", regex=False)
-        # Convert sec -> min
+        # Convert sec -> min and filter negatives
         df_plot["first_job_waiting_time"] = (df_plot["first_job_waiting_time"] / 60).round(2)
+        df_plot = df_plot[df_plot["first_job_waiting_time"] >= 0]
 
         # Group by job_type, compute median
         grouped = df_plot.groupby("job_type")["first_job_waiting_time"].median().reset_index()
+        # sort the values in ascending order    
+        grouped = grouped.sort_values(by="first_job_waiting_time", ascending=True)
+        # Create base figure
+        fig = go.Figure()
 
-        fig = px.bar(
-            grouped,
-            x="job_type",
-            y="first_job_waiting_time",
-            color=None if color_var == "none" else color_var,
-            labels={
-                "first_job_waiting_time": "Median Waiting Time (min)",
-                "job_type": "Job Type"
-            },
-            text_auto=".1f"
+        # Add visible bar trace
+        fig.add_trace(go.Bar(
+            x=grouped["job_type"],
+            y=grouped["first_job_waiting_time"],
+            marker=dict(color='royalblue'),  # Set bar color
+            showlegend=False
+        ))
+
+        # Configure layout
+        fig.update_layout(
+            yaxis=dict(
+                title="Median Waiting Time (min)",
+                range=[0, max(grouped["first_job_waiting_time"].max() * 1.1, 1)],  # Ensure min 0-1 range
+                zeroline=True,
+                zerolinewidth=2,
+            ),
+            xaxis=dict(title="Job Type"),
+            hovermode="x"
         )
+
         return fig
 
     # ---- (B) Box Plot: Job Waiting Time by Month & Year ----
     @render_plotly
     def job_waiting_time_by_month():
         """
-        Create a box plot (facet by job type) showing job waiting time (hours)
-        by month, with outliers preserved during downsampling.
+        Create a line plot showing the median job waiting time (hours) across the year through 12 months.
+        The top 7 queues with the largest total waiting times are displayed individually,
+        while the remaining queues are combined into an 'other' category (median of their waiting times).
         """
         df = dataset_data()
         if df.empty:
@@ -315,68 +320,48 @@ def mpi_job_server(input, output, session):
         selected_years = list(map(int, input.years()))
         df_plot = df_plot[df_plot['year'].isin(selected_years)]
 
-        # Downsampling logic with outlier preservation
-        max_points = 5000  # Set the maximum number of data points
-        points_per_year = max_points // len(selected_years) if selected_years else max_points
+        # Aggregate total waiting time by queue and year
+        queue_totals = (
+            df_plot.groupby("job_type")["job_waiting_time (hours)"]
+            .sum()
+            .reset_index()
+        )
 
-        # Identify outliers using IQR
-        Q1 = df_plot["job_waiting_time (hours)"].quantile(0.25)
-        Q3 = df_plot["job_waiting_time (hours)"].quantile(0.75)
-        IQR = Q3 - Q1
-        lower_bound = Q1 - 1.5 * IQR
-        upper_bound = Q3 + 1.5 * IQR
+        # Identify the top 7 queues with the largest total waiting times
+        top_queues = queue_totals.nlargest(7, "job_waiting_time (hours)")["job_type"].tolist()
 
-        outliers = df_plot[(df_plot["job_waiting_time (hours)"] < lower_bound) | 
-                        (df_plot["job_waiting_time (hours)"] > upper_bound)]
-        non_outliers = df_plot[(df_plot["job_waiting_time (hours)"] >= lower_bound) & 
-                            (df_plot["job_waiting_time (hours)"] <= upper_bound)]
+        # Combine the remaining queues into 'other'
+        df_plot["job_type"] = df_plot["job_type"].apply(
+            lambda x: x if x in top_queues else "other"
+        )
 
-        downsampled_non_outliers = []
-        for year in selected_years:
-            year_data = non_outliers[non_outliers['year'] == year]
-            if len(year_data) > points_per_year:
-                year_data = year_data.sample(n=points_per_year, random_state=42)
-            downsampled_non_outliers.append(year_data)
+        # Aggregate median waiting time by month, year, and job_type
+        df_aggregated = (
+            df_plot.groupby(["year", "month", "job_type"], as_index=False)
+            ["job_waiting_time (hours)"]
+            .median()
+        )
 
-        # Combine outliers and sampled non-outliers
-        df_plot = pd.concat([pd.concat(downsampled_non_outliers), outliers])
-
-        # Create the box plot
-        fig = px.box(
-            df_plot,
+        # Create the line plot
+        fig = px.line(
+            df_aggregated,
             x="month",
             y="job_waiting_time (hours)",
-            color="year",
-            facet_col="job_type",
-            labels={"job_waiting_time (hours)": "Job Waiting Time (hours)"}
+            color="job_type",
+            line_dash="year",  # Different line styles for each year
+            labels={"job_waiting_time (hours)": "Median Job Waiting Time (hours)"},
+            title="Median Job Waiting Time by Month (Top 7 Queues + Other)"
         )
+
+        # Update layout
         fig.update_layout(
-            yaxis=dict(range=[0, 20]),
-            boxmode="group",
-            title=None,
-            showlegend=True
+            xaxis=dict(title="Month", tickmode="array", tickvals=list(range(1, 13)), ticktext=[str(i) for i in range(1, 13)]),
+            yaxis=dict(title="Median Job Waiting Time (hours)"),
+            showlegend=True,
+            hovermode="x unified"
         )
 
-        # Remove "job_type=" prefix in facet titles
-        for annotation in fig["layout"]["annotations"]:
-            if annotation["text"].startswith("job_type="):
-                annotation["text"] = annotation["text"][16:]
-        # Remove x-axis label for subplots
-        for axis in fig.layout:
-            if axis.startswith("xaxis"):
-                fig.layout[axis].title.text = None
-        # Add jittered points
-        fig.update_traces(
-            marker=dict(size=6, opacity=0.7, line=dict(width=1, color="white")),
-            boxpoints="all",
-            jitter=0.3,
-            pointpos=0
-        )
-        # Ensure correct month order
-        fig.update_xaxes(categoryorder="array", categoryarray=month_order)
         return fig
-
-
 
 
     # ---- (C) Box Plot: Job Waiting Time by CPU Cores ----
@@ -480,21 +465,19 @@ def mpi_job_server(input, output, session):
         )
         return fig
 
+    @output
+    @render.ui
+    def mpi_warning_message():
+        try:
+            year = int(input.selected_year_mpi())
+            month = input.selected_month_mpi().capitalize()
+        except:
+            return ui.markdown("⚠️ Invalid year or month input.")
 
+        if month not in month_order:
+            return ui.markdown("⚠️ Invalid month format. Use 3-letter month (e.g., Jan, Feb).")
 
+        if dataset[(dataset["year"] == year) & (dataset["month"] == month)].empty:
+            return ui.markdown("⚠️ No data available for this year and month.")
 
-
-    # ----------------------------------------------------------------
-    # 6) Reactive Effects for "Select All"/"Unselect All" (If needed)
-    # ----------------------------------------------------------------
-    @reactive.effect
-    @reactive.event(input.select_all)
-    def _():
-        # Example: if you had a CPU selection UI, you might update it here
-        pass
-
-    @reactive.effect
-    @reactive.event(input.unselect_all)
-    def _():
-        # Example: if you had a job_type or CPU selection UI, you might clear it here
-        pass
+        return None

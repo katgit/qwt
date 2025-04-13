@@ -4,3 +4,10 @@ shinywidgets
 plotly
 pandas
 ridgeplot
+numpy
+time
+datatime
+argparse
+tqdm
+faicons
+pathlib

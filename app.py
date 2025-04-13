@@ -18,7 +18,7 @@ app_ui = ui.page_fluid(
             ui.nav_panel("OMP Job"),
             ui.nav_panel("1-p Job"),
             id="selected_navset_bar",
-            title="Job Type",
+            title="Entry Job Analysis",
         ),
         id="nav-bar-content",
         style="background-color: #f8f9fa; padding: 10px; height: 75px;"
