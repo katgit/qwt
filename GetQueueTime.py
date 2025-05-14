@@ -3,7 +3,7 @@ import numpy as np
 import time
 import argparse
 from tqdm import tqdm
-from helpers import (determine_job_type, determine_job_type, check_shared_buyin, GPU_1_queue_time, GPU_1_queue_time_by_month, GPU_all_queue_time, GPU_queue_time_by_month, MPI_shared_queues_time, MPI_shared_queue_separately, calculate_statistics)
+from helpers import (determine_job_type, check_shared_buyin)
 import datetime
 
 
@@ -71,7 +71,8 @@ def waiting_time_per_job_type(input_file_name, output_file_name, year):
                     # Append the result
                     job_type_waiting_times.append([
                         job_type_label,
-                        row['queue_type'],
+                        row['class_user'],
+                        row['class_own'],
                         current_waiting_time,
                         month,
                         year,
@@ -84,7 +85,7 @@ def waiting_time_per_job_type(input_file_name, output_file_name, year):
             latest_end_times[(owner, job_type)] = max(end_time, latest_end_times[(owner, job_type)])
 
     # Convert the results to a DataFrame
-    job_type_waiting_df = pd.DataFrame(job_type_waiting_times, columns=['job_type', 'queue_type', 'first_job_waiting_time', 'month', 'year', 'day', 'job_number', 'slots'])
+    job_type_waiting_df = pd.DataFrame(job_type_waiting_times, columns=['job_type', 'class_user', 'class_own', 'first_job_waiting_time', 'month', 'year', 'day', 'job_number', 'slots'])
 
     # Save the results to a CSV file
     job_type_waiting_df.to_csv(output_file_name, index=False, chunksize=100000)

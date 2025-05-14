@@ -5,11 +5,11 @@ from pathlib import Path
 
 # Helper function to format time
 def format_time(seconds):
-    if seconds >= 3600:  # Convert to hours
+    if seconds >= 3600:  
         return f"{seconds / 3600:.2f} hour"
-    elif seconds >= 60:  # Convert to minutes
+    elif seconds >= 60:  
         return f"{seconds / 60:.2f} min"
-    else:  # Keep in seconds
+    else:  
         return f"{seconds:.2f} sec"
 
 # Check command-line arguments
